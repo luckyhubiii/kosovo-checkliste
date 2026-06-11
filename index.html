@@ -272,8 +272,13 @@
 const SUPABASE_URL = 'https://zrqtqgorjwdvnwhmxavw.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_wQBzATgNKl--9vPnwFodsQ_MBmY9Ixi';
 
-const api = (path, opts={}) => fetch(SUPABASE_URL + '/rest/v1/' + path, {
-  headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal', ...opts.headers },
+const apiFetch = (path, opts={}) => fetch(SUPABASE_URL + '/rest/v1/' + path, {
+  headers: {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    ...(opts.headers || {})
+  },
   ...opts
 });
 
@@ -289,21 +294,22 @@ function setSyncStatus(state, text) {
 async function loadAll() {
   setSyncStatus('syncing', 'Daten werden geladen …');
   try {
-    const res = await api('checklist?select=id,checked,notiz');
+    const res = await apiFetch('checklist?select=id,checked,notiz');
     if (!res.ok) throw new Error(res.status);
     const rows = await res.json();
     const map = {};
-    rows.forEach(r => map[r.id] = r);
+    rows.forEach(r => { map[r.id] = r; });
 
     document.querySelectorAll('.item[data-id]').forEach(item => {
       const id = item.dataset.id;
       const row = map[id];
       if (row) {
         if (row.checked) item.classList.add('checked');
-        const ta = item.nextElementSibling && item.nextElementSibling.querySelector('textarea');
+        else item.classList.remove('checked');
+        const wrap = item.nextElementSibling;
+        const ta = wrap && wrap.querySelector('textarea');
         if (ta && row.notiz) {
           ta.value = row.notiz;
-          const wrap = item.nextElementSibling;
           wrap.classList.add('visible');
           const btn = item.querySelector('.btn-notiz');
           if (btn) btn.textContent = '– Notiz verbergen';
@@ -318,33 +324,31 @@ async function loadAll() {
   document.getElementById('loadingOverlay').style.display = 'none';
 }
 
+async function upsertItem(id, checked, notiz) {
+  const res = await apiFetch('checklist', {
+    method: 'POST',
+    headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ id, checked, notiz: notiz || '' })
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 async function toggleItem(el) {
   if (!el.classList.contains('item')) return;
   const id = el.dataset.id;
   if (!id) return;
   el.classList.toggle('checked');
-  el.classList.add('saving');
   const checked = el.classList.contains('checked');
+  const ta = el.nextElementSibling && el.nextElementSibling.querySelector('textarea');
+  const notiz = ta ? ta.value : '';
   setSyncStatus('syncing', 'Wird gespeichert …');
   try {
-    const res = await api('checklist?id=eq.' + id, {
-      method: 'PATCH',
-      body: JSON.stringify({ checked }),
-      headers: { 'Prefer': 'resolution=merge-duplicates' }
-    });
-    if (res.status === 404 || res.status === 200 || res.status === 204) {
-      // try upsert if patch returned nothing
-      await api('checklist', {
-        method: 'POST',
-        body: JSON.stringify({ id, checked, notiz: '' }),
-        headers: { 'Prefer': 'resolution=merge-duplicates' }
-      });
-    }
+    await upsertItem(id, checked, notiz);
     setSyncStatus('ok', 'Gespeichert · ' + new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'}));
   } catch(e) {
     setSyncStatus('error', 'Speichern fehlgeschlagen');
+    el.classList.toggle('checked');
   }
-  el.classList.remove('saving');
   updateAll();
 }
 
@@ -358,11 +362,7 @@ function saveNotiz(ta) {
   setSyncStatus('syncing', 'Notiz wird gespeichert …');
   notizTimer[id] = setTimeout(async () => {
     try {
-      await api('checklist', {
-        method: 'POST',
-        body: JSON.stringify({ id, checked: item.classList.contains('checked'), notiz: ta.value }),
-        headers: { 'Prefer': 'resolution=merge-duplicates' }
-      });
+      await upsertItem(id, item.classList.contains('checked'), ta.value);
       setSyncStatus('ok', 'Notiz gespeichert · ' + new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'}));
     } catch(e) {
       setSyncStatus('error', 'Speichern fehlgeschlagen');
@@ -402,14 +402,14 @@ function updateAll() {
   document.getElementById('progressLabel').textContent = done+' von '+total+' Aufgaben erledigt ('+pct+' %)';
 }
 
-// Polling alle 15 Sekunden für Live-Updates von anderen Nutzern
+// Polling alle 5 Sekunden
 setInterval(async () => {
   try {
-    const res = await api('checklist?select=id,checked');
+    const res = await apiFetch('checklist?select=id,checked');
     if (!res.ok) return;
     const rows = await res.json();
     const map = {};
-    rows.forEach(r => map[r.id] = r.checked);
+    rows.forEach(r => { map[r.id] = r.checked; });
     document.querySelectorAll('.item[data-id]').forEach(item => {
       const id = item.dataset.id;
       if (id in map) {
@@ -419,7 +419,7 @@ setInterval(async () => {
     });
     updateAll();
   } catch(e) {}
-}, 15000);
+}, 5000);
 
 loadAll();
 </script>
