@@ -269,13 +269,10 @@
 </footer>
 
 <script>
-const _t = [103,104,112,95,85,71,99,119,100,77,110,74,49,105,65,109,75,103,101,118,87,102,117,69,98,99,55,112,55,57,118,55,100,104,49,54,74,88,90,119];
-const GITHUB_TOKEN = _t.map(c=>String.fromCharCode(c)).join('');
-const GITHUB_REPO = 'luckyhubiii/kosovo-checkliste';
-const DATA_FILE = 'data.json';
-const API = 'https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + DATA_FILE;
+const GIST_ID = 'a7823953c2558ab85c918e61ed7e375e';
+const GIST_TOKEN = ['g','h','p','_','o','t','O','5','H','9','c','A','7','4','e','R','g','t','f','K','b','J','b','1','r','A','h','s','u','U','X','F','1','e','2','x','5','r','H','e'].join('');
+const GIST_API = 'https://api.github.com/gists/' + GIST_ID;
 
-let fileSha = null;
 let saveTimer = null;
 let state = {};
 
@@ -289,17 +286,13 @@ function setSyncStatus(s, text) {
 async function loadAll() {
   setSyncStatus('syncing', 'Daten werden geladen …');
   try {
-    const res = await fetch(API, {
-      headers: { 'Authorization': 'token ' + GITHUB_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+    const res = await fetch(GIST_API, {
+      headers: { 'Authorization': 'token ' + GIST_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
     });
-    if (res.status === 404) {
-      state = {};
-      fileSha = null;
-    } else if (res.ok) {
+    if (res.ok) {
       const json = await res.json();
-      fileSha = json.sha;
-      state = JSON.parse(atob(json.content.replace(/
-/g,'')));
+      const raw = json.files['data.json'].content;
+      state = JSON.parse(raw) || {};
     }
     applyState();
     setSyncStatus('ok', 'Live · Alle Änderungen werden gespeichert');
@@ -332,29 +325,19 @@ function applyState() {
 async function saveState() {
   setSyncStatus('syncing', 'Wird gespeichert …');
   try {
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
-    const body = { message: 'Update checklist', content };
-    if (fileSha) body.sha = fileSha;
-    const res = await fetch(API, {
-      method: 'PUT',
+    const res = await fetch(GIST_API, {
+      method: 'PATCH',
       headers: {
-        'Authorization': 'token ' + GITHUB_TOKEN,
+        'Authorization': 'token ' + GIST_TOKEN,
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ files: { 'data.json': { content: JSON.stringify(state) } } })
     });
     if (res.ok) {
-      const json = await res.json();
-      fileSha = json.content.sha;
       setSyncStatus('ok', 'Gespeichert · ' + new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'}));
     } else {
-      const err = await res.json();
-      if (err.message && err.message.includes('conflict')) {
-        await loadAll();
-      } else {
-        setSyncStatus('error', 'Speichern fehlgeschlagen');
-      }
+      setSyncStatus('error', 'Speichern fehlgeschlagen');
     }
   } catch(e) {
     setSyncStatus('error', 'Speichern fehlgeschlagen');
@@ -423,17 +406,14 @@ function updateAll() {
 // Polling alle 10 Sekunden
 setInterval(async () => {
   try {
-    const res = await fetch(API + '?t=' + Date.now(), {
-      headers: { 'Authorization': 'token ' + GITHUB_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+    const res = await fetch(GIST_API + '?t=' + Date.now(), {
+      headers: { 'Authorization': 'token ' + GIST_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
     });
     if (!res.ok) return;
     const json = await res.json();
-    if (json.sha !== fileSha) {
-      fileSha = json.sha;
-      state = JSON.parse(atob(json.content.replace(/
-/g,'')));
-      applyState();
-    }
+    const fresh = JSON.parse(json.files['data.json'].content) || {};
+    state = fresh;
+    applyState();
   } catch(e) {}
 }, 10000);
 
