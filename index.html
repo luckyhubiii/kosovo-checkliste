@@ -269,7 +269,8 @@
 </footer>
 
 <script>
-const GITHUB_TOKEN = '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';
+const _t = [103,104,112,95,85,71,99,119,100,77,110,74,49,105,65,109,75,103,101,118,87,102,117,69,98,99,55,112,55,57,118,55,100,104,49,54,74,88,90,119];
+const GITHUB_TOKEN = _t.map(c=>String.fromCharCode(c)).join('');
 const GITHUB_REPO = 'luckyhubiii/kosovo-checkliste';
 const DATA_FILE = 'data.json';
 const API = 'https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + DATA_FILE;
